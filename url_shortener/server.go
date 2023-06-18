@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	url2 "github.com/PyMarcus/url_shortener/url"
+	"github.com/PyMarcus/url_shortener/url"
 	"log"
 	"net/http"
+	"strings"
 )
 
 type Headers map[string]string
@@ -30,9 +31,9 @@ func response(w http.ResponseWriter, status int, headers Headers) {
 
 // extrai url do corpo da requisicao
 func extractUrl(r *http.Request) string {
-	url := make([]byte, r.ContentLength, r.ContentLength)
-	r.Body.Read(url)
-	return string(url)
+	urll := make([]byte, r.ContentLength, r.ContentLength)
+	r.Body.Read(urll)
+	return string(urll)
 }
 
 func Shortener(w http.ResponseWriter, r *http.Request) {
@@ -45,35 +46,45 @@ func Shortener(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, new, err := url2.SearchOrCreateAnewUrl(extractUrl(r))
-
+	urll, neww, err := url.SearchOrCreateAnewUrl(extractUrl(r))
+	fmt.Println("Connection received from ", r.RemoteAddr)
+	fmt.Println("Order to shorten ", urll.Dest)
 	if err != nil {
 		response(w, http.StatusBadRequest, nil)
 		return
 	}
 
-	if new {
+	if neww {
 		status = http.StatusCreated
 	} else {
 		status = http.StatusOK
 	}
 
-	shortUrl := fmt.Sprintf("%s/r/%s", urlBase, url.Id)
+	shortUrl := fmt.Sprintf("%s/r/%s", urlBase, urll.Id)
+	fmt.Println("Response: ", shortUrl, " Status: ", status)
 	response(w, status, Headers{
 		"Location": shortUrl,
 	})
 }
 
 func Redirect(w http.ResponseWriter, r *http.Request) {
+	path := strings.Split(r.URL.Path, "/")
+	id := path[len(path)-1]
 
+	if url := url.Search(id); url != nil {
+		http.Redirect(w, r, url.Dest, http.StatusMovedPermanently)
+	} else {
+		http.NotFound(w, r)
+	}
 }
 
 // define as rotas
 func createRoutes() {
+	url.SettingRepository(url.NewMemoryRepository())
 	// encurta url
 	http.HandleFunc("/api/shorten", Shortener)
 	// redireciona a url encurtada para a original
-	http.HandleFunc("/r/<id>", Redirect)
+	http.HandleFunc("/r/", Redirect)
 
 	log.Fatal(
 		http.ListenAndServe(
@@ -81,5 +92,6 @@ func createRoutes() {
 }
 
 func main() {
+	fmt.Println("Server is running in port: ", port)
 	createRoutes()
 }
